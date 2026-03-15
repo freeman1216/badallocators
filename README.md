@@ -21,7 +21,7 @@ BAD_BBUDDY_ALLOCATE_STATIC(sbbuddy, 12, 6);
 ```
 Or
 ```c
-char * dyn_buddy = malloc(BAD_BBUDY_ALLOC_SIZE(12,6));
+char * dyn_buddy = malloc(BAD_BBUDDY_ALLOC_SIZE(12,6));
 bad_bbuddy *dbuddy = bad_bbuddy_init_allocate(dyn_buddy,BAD_BBUDDY_GET_FREELIST_PTR(dyn_buddy),
                                              BAD_BBUDDY_GET_BMASK_PTR(dyn_buddy,12,6)12,6);
 ```
