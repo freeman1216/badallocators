@@ -19,9 +19,9 @@ int main(){
     uint8_t BAD_BBUDDY_ALIGN_ATTR mem[BAD_BBUDDY_ALLOC_SIZE(12, 6)];
     bad_bbuddy_t *bbuddy =bad_bbuddy_init_allocate(mem,BAD_BBUDDY_GET_FREELIST_PTR(mem), BAD_BBUDDY_GET_BMASK_PTR(mem, 12, 6), 12, 6);
     BAD_BBUDDY_ALLOCATE_STATIC(sbbuddy, 12, 6);
-    void* b1 = bad_bbuddy_alloc(sbbuddy, 64); // 8 bytes
+    void* b1 = bad_bbuddy_alloc(sbbuddy, 64); 
     print_free_lists(sbbuddy);
-    void* b2 = bad_bbuddy_alloc(sbbuddy, 100); // 8 bytes
+    void* b2 = bad_bbuddy_alloc(sbbuddy, 100); 
     print_free_lists(sbbuddy);
     void* b3 = bad_bbuddy_alloc(sbbuddy, 300); // 8 bytes
     print_free_lists(sbbuddy);

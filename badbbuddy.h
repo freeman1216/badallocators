@@ -25,7 +25,8 @@ typedef struct bad_bbuddy_free_node {
 }bad_bbuddy_free_node_t;
 
 typedef struct {
-    uintptr_t base;                          
+    uintptr_t base;
+    size_t heads_bmask;
     size_t min_order;
     size_t max_order;
     size_t size;
@@ -149,6 +150,7 @@ BAD_BBUDDY_DEF bad_bbuddy_t* bad_bbuddy_init(
     bbuddy->size = size_of_allocation;
     bbuddy->free_list_size = free_list_size;
     bbuddy->owns_memory = false;
+    bbuddy->heads_bmask = 1;
     return bbuddy;
 }
 
@@ -198,6 +200,7 @@ BAD_BBUDDY_DEF bad_bbuddy_t* bad_bbuddy_init_allocate(
     bbuddy->size = size_of_allocation;
     bbuddy->free_list_size = free_list_size;
     bbuddy->owns_memory = true;
+    bbuddy->heads_bmask = 1;
     return bbuddy;
 }
 
@@ -215,22 +218,18 @@ BAD_BBUDDY_DEF void* bad_bbuddy_alloc(bad_bbuddy_t *bbuddy,size_t size){
     }
 
     size_t idx = bbuddy->max_order  - order;
-    size_t picked_idx = idx;
-    
-    for( ; picked_idx != SIZE_MAX ; picked_idx--){
-        if(bbuddy->list[picked_idx].next != &bbuddy->list[picked_idx]){
-            break;
-        }
-    }
-    
-    if(picked_idx==SIZE_MAX){
+    size_t order_mask = ((size_t)1 << (idx + 1)) - 1;
+    size_t masked = bbuddy->heads_bmask & order_mask;
+    if(!masked){
         return NULL;
-    }
+    }   
+    size_t picked_idx = (sizeof(size_t) * 8) - 1 - __builtin_clzl(masked) ;
     
     size_t splits = idx - picked_idx;
     uint8_t *block_for_split = (uint8_t*)bbuddy->list[picked_idx].next;
     bbuddy->list[picked_idx].next = bbuddy->list[picked_idx].next->next;
     bbuddy->list[picked_idx].next->prev = &bbuddy->list[picked_idx];
+    bbuddy->heads_bmask ^= (size_t)(&bbuddy->list[picked_idx] == bbuddy->list[picked_idx].next) << picked_idx;
     size_t splited_block_size = (size_t)1 << (bbuddy->max_order - picked_idx-1);
     bad_bbuddy_free_node_t * unused_block = NULL;
     size_t bmaskidx, bmask_word, bmask_bit,offset_from_base;
@@ -255,8 +254,9 @@ BAD_BBUDDY_DEF void* bad_bbuddy_alloc(bad_bbuddy_t *bbuddy,size_t size){
         bmaskidx = (((size_t)1<<(picked_idx))-1) + ((offset_from_base) >> ( bbuddy->max_order - picked_idx));
         bmask_word = bmaskidx / (sizeof(size_t) * 8);
         bmask_bit = bmaskidx & ((sizeof(size_t) * 8) - 1);
-        bbuddy->bmask[bmask_word] ^= (size_t)1 << bmask_bit; 
+        bbuddy->bmask[bmask_word] ^= (size_t)1 << bmask_bit;
         picked_idx++;
+        bbuddy->heads_bmask |= ((size_t)1 << picked_idx);
         splited_block_size>>=1;
     }
 
@@ -304,6 +304,7 @@ BAD_BBUDDY_DEF void bad_bbuddy_free(bad_bbuddy_t *bbuddy,void *block, size_t siz
         void *parent_addr = (void*)((uint8_t*)bbuddy->base + parent_offset); 
 
 
+        bbuddy->heads_bmask ^= (size_t)(&bbuddy->list[idx] == bbuddy->list[idx].next) << idx;
         bad_bbuddy_free_node_t *buddy = (bad_bbuddy_free_node_t *)buddy_addr;
         buddy->prev->next = buddy->next;
         buddy->next->prev = buddy->prev;
@@ -318,6 +319,7 @@ BAD_BBUDDY_DEF void bad_bbuddy_free(bad_bbuddy_t *bbuddy,void *block, size_t siz
     final_block->next->prev = final_block;
     bbuddy->list[idx].next = final_block;
     final_block->prev = &bbuddy->list[idx];
+    bbuddy->heads_bmask |= ((size_t)1 << idx);
 }
 
 BAD_BBUDDY_DEF void bad_bbuddy_deinit(bad_bbuddy_t *bbuddy){
@@ -342,7 +344,7 @@ BAD_BBUDDY_DEF void bad_bbuddy_reset(bad_bbuddy_t *bbuddy){
     for(size_t i = 0; i < bbuddy->bmask_size; i++){
         bbuddy->bmask[i] = 0;
     }
-
+    bbuddy->heads_bmask = 1;
 }
 
 #endif // BAD_BBUDDY_IMPLEMENTATION

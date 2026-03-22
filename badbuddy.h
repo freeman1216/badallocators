@@ -22,7 +22,8 @@ typedef struct bad_buddy_free_node {
 }bad_buddy_free_node_t;
 
 typedef struct {
-    uintptr_t base;                          
+    uintptr_t base;
+    size_t heads_bmask;
     size_t min_order;
     size_t max_order;
     size_t size;
@@ -113,6 +114,7 @@ BAD_BUDDY_DEF bad_buddy_t *bad_buddy_init(
     buddy->size = size_of_allocation;
     buddy->free_list_size = free_list_size;
     buddy->owns_memory = false;
+    buddy->heads_bmask = 1;
     return buddy;
 }
 
@@ -151,6 +153,7 @@ BAD_BUDDY_DEF bad_buddy_t *bad_buddy_init_allocate(
     buddy->size = size_of_allocation;
     buddy->free_list_size = free_list_size;
     buddy->owns_memory = true;
+    buddy->heads_bmask = 1;
     return buddy;
 }
 
@@ -166,21 +169,17 @@ BAD_BUDDY_DEF void* bad_buddy_alloc(bad_buddy_t *buddy,size_t size){
     }
 
     size_t idx = buddy->max_order  - order;
-    size_t picked_idx = idx;
-    
-    for( ; picked_idx != SIZE_MAX ; picked_idx--){
-        if(buddy->list[picked_idx]!=0){
-            break;
-        }
-    }
-    
-    if(picked_idx==SIZE_MAX){
+    size_t order_mask = ((size_t)1 << (idx + 1)) - 1;
+    size_t masked = buddy->heads_bmask & order_mask;
+    if(!masked){
         return NULL;
     }
+    size_t picked_idx = (sizeof(size_t) * 8) - 1 - __builtin_clzl(masked) ;
     
     size_t splits = idx - picked_idx;
     uint8_t *block_for_split = (uint8_t*)buddy->list[picked_idx];
     buddy->list[picked_idx] = buddy->list[picked_idx]->next;
+    buddy->heads_bmask ^= (size_t)(!buddy->list[picked_idx]) << picked_idx;
     size_t splited_block_size = (size_t)1 << (buddy->max_order - picked_idx-1);
     bad_buddy_free_node_t* unused_block = NULL;
 
@@ -190,6 +189,7 @@ BAD_BUDDY_DEF void* bad_buddy_alloc(bad_buddy_t *buddy,size_t size){
         buddy->list[picked_idx+1] = unused_block;
         
         picked_idx++;
+        buddy->heads_bmask |= ((size_t)1 << picked_idx);
         splited_block_size>>=1;
     }
 
@@ -232,6 +232,7 @@ BAD_BUDDY_DEF void bad_buddy_free(bad_buddy_t *buddy,void *block, size_t size){
             buddy->list[idx] = buddy->list[idx]->next;
             curr_block = parent_addr;
             curr_order++;
+            buddy->heads_bmask ^= (size_t)(!buddy->list[idx]) << idx;
             continue;
         }
 
@@ -252,6 +253,7 @@ BAD_BUDDY_DEF void bad_buddy_free(bad_buddy_t *buddy,void *block, size_t size){
     bad_buddy_free_node_t *final_block = (bad_buddy_free_node_t *)curr_block;
     final_block->next = buddy->list[idx];
     buddy->list[idx] = final_block;
+    buddy->heads_bmask |= (size_t)1 << idx;
 }
 
 BAD_BUDDY_DEF void bad_buddy_deinit(bad_buddy_t *buddy){
@@ -269,6 +271,7 @@ BAD_BUDDY_DEF void bad_buddy_reset(bad_buddy_t *buddy){
     for (size_t i = 1 ; i < buddy->free_list_size; i++) {
         buddy->list[i] = NULL;  
     }
+    buddy->heads_bmask = 1;
 }
 
 #endif // BAD_BUDDY_IMPLEMENTATION
