@@ -304,12 +304,12 @@ BAD_BBUDDY_DEF void bad_bbuddy_free(bad_bbuddy_t *bbuddy,void *block, size_t siz
         void *parent_addr = (void*)((uint8_t*)bbuddy->base + parent_offset); 
 
 
-        bbuddy->heads_bmask ^= (size_t)(&bbuddy->list[idx] == bbuddy->list[idx].next) << idx;
         bad_bbuddy_free_node_t *buddy = (bad_bbuddy_free_node_t *)buddy_addr;
         buddy->prev->next = buddy->next;
         buddy->next->prev = buddy->prev;
         buddy->prev = 0;
         buddy->next = 0;
+        bbuddy->heads_bmask ^= (size_t)(&bbuddy->list[idx] == bbuddy->list[idx].next) << idx;
         curr_order++;
         curr_block = parent_addr;
     }
